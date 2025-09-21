@@ -49,6 +49,7 @@ class FractureDataset(Dataset):
 # UNet模型定义
 class DoubleConv(nn.Module):
     """(convolution => [BN] => ReLU) * 2"""
+
     def __init__(self, in_channels, out_channels, mid_channels=None):
         super().__init__()
         if not mid_channels:
@@ -67,6 +68,7 @@ class DoubleConv(nn.Module):
 
 class Down(nn.Module):
     """Downscaling with maxpool then double conv"""
+
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.maxpool_conv = nn.Sequential(
@@ -79,6 +81,7 @@ class Down(nn.Module):
 
 class Up(nn.Module):
     """Upscaling then double conv"""
+
     def __init__(self, in_channels, out_channels, bilinear=True):
         super().__init__()
         if bilinear:
@@ -152,19 +155,33 @@ mask_transform = transforms.Compose([
 ])
 
 # 数据路径
-image_dir = './data/image/'
-mask_dir = './data/mask/'
+base_image_dir = './data/image'
+base_mask_dir = './data/mask'
 
 # 创建数据集
-full_dataset = FractureDataset(image_dir, mask_dir, transform=transform, mask_transform=mask_transform)
+train_dataset = FractureDataset(
+    image_dir=os.path.join(base_image_dir, 'train'),
+    mask_dir=os.path.join(base_mask_dir, 'train'),
+    transform=transform,
+    mask_transform=mask_transform
+)
 
-# 使用同一数据集作为训练、验证、测试集
-train_dataset = full_dataset
-val_dataset = full_dataset
-test_dataset = full_dataset
+val_dataset = FractureDataset(
+    image_dir=os.path.join(base_image_dir, 'val'),
+    mask_dir=os.path.join(base_mask_dir, 'val'),
+    transform=transform,
+    mask_transform=mask_transform
+)
+
+test_dataset = FractureDataset(
+    image_dir=os.path.join(base_image_dir, 'test'),
+    mask_dir=os.path.join(base_mask_dir, 'test'),
+    transform=transform,
+    mask_transform=mask_transform
+)
 
 # DataLoader
-batch_size = 2  # 由于图像尺寸较大，减小batch_size以适应显存
+batch_size = 10  # 由于图像尺寸较大，减小batch_size以适应显存
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
@@ -203,10 +220,9 @@ def validate_epoch(model, loader, criterion, device):
             running_loss += loss.item()
     return running_loss / len(loader)
 
-# 测试函数（包括输出二值化图示例并保存）
-def test_model(model, loader, device, num_examples=3, output_dir='./output/'):
+# 测试函数（包括输出二值化图示例）
+def test_model(model, loader, device, num_examples=3):
     model.eval()
-    os.makedirs(output_dir, exist_ok=True)  # 创建输出目录
     with torch.no_grad():
         for i, (images, masks) in enumerate(loader):
             if i >= num_examples:
@@ -230,27 +246,21 @@ def test_model(model, loader, device, num_examples=3, output_dir='./output/'):
             plt.axis('off')
             plt.subplot(1, 3, 2)
             plt.title('Ground Truth Mask')
-            plt.imshow(masks[0].cpu().squeeze(), cmap='gray')
+            plt.imshow(masks[0].cpu().squeeze(), cmap='gray')  # 去除通道维度
             plt.axis('off')
             plt.subplot(1, 3, 3)
             plt.title('Predicted Binary Mask')
             plt.imshow(preds[0].cpu().squeeze(), cmap='gray')
             plt.axis('off')
-
-            # 保存可视化图像
-            output_path = os.path.join(output_dir, f'test_result_{i+1}_{epoch}.png')
-            plt.savefig(output_path, bbox_inches='tight', dpi=300)
-            print(f"可视化图像已保存至：{output_path}")
             plt.show()
-            plt.close()
 
 # 创建保存模型的目录
 os.makedirs('./checkpoints', exist_ok=True)
 
 def train():
     # 训练循环
-    num_epochs = 100
-    save_interval = 5  # 每5轮保存一次
+    num_epochs = 1000
+    save_interval = 50  # 每5轮保存一次
     for epoch in range(num_epochs):
         train_loss = train_epoch(model, train_loader, optimizer, criterion, device)
         val_loss = validate_epoch(model, val_loader, criterion, device)
@@ -269,17 +279,4 @@ def train():
             print(f'模型已保存至 {checkpoint_path}')
 
 if __name__ == '__main__':
-    # 设备
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    epoch=500
-    # 加载模型
-    model = UNet(n_channels=3, n_classes=1).to(device)
-    checkpoint_path = f'./checkpoints/checkpoint_epoch_{epoch}.pth'  # 假设使用最后一轮的模型
-
-
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    print(f"已加载模型权重：{checkpoint_path}")
-    # 测试
-    test_model(model, test_loader, device,epoch)
+    train()

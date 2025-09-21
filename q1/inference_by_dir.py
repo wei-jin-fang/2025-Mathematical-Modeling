@@ -14,12 +14,9 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 import matplotlib.pyplot as plt
-
-
 # UNet模型定义
 class DoubleConv(nn.Module):
     """(convolution => [BN] => ReLU) * 2"""
-
     def __init__(self, in_channels, out_channels, mid_channels=None):
         super().__init__()
         if not mid_channels:
@@ -36,10 +33,8 @@ class DoubleConv(nn.Module):
     def forward(self, x):
         return self.double_conv(x)
 
-
 class Down(nn.Module):
     """Downscaling with maxpool then double conv"""
-
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.maxpool_conv = nn.Sequential(
@@ -50,10 +45,8 @@ class Down(nn.Module):
     def forward(self, x):
         return self.maxpool_conv(x)
 
-
 class Up(nn.Module):
     """Upscaling then double conv"""
-
     def __init__(self, in_channels, out_channels, bilinear=True):
         super().__init__()
         if bilinear:
@@ -72,7 +65,6 @@ class Up(nn.Module):
         x = torch.cat([x2, x1], dim=1)
         return self.conv(x)
 
-
 class OutConv(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(OutConv, self).__init__()
@@ -80,7 +72,6 @@ class OutConv(nn.Module):
 
     def forward(self, x):
         return self.conv(x)
-
 
 class UNet(nn.Module):
     def __init__(self, n_channels=3, n_classes=1, bilinear=False):
@@ -114,7 +105,6 @@ class UNet(nn.Module):
         logits = self.outc(x)
         return logits
 
-
 # 自定义推理数据集（仅加载图像）
 class InferenceDataset(Dataset):
     def __init__(self, image_dir, transform=None):
@@ -132,13 +122,14 @@ class InferenceDataset(Dataset):
             print(f"无法加载图像：{img_path}")
             return None
 
+
+
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
         if self.transform:
             image = self.transform(image)
 
         return image, self.images[idx]  # 返回图像和文件名
-
 
 # 数据变换（与训练时一致）
 transform = transforms.Compose([
@@ -147,15 +138,12 @@ transform = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
-
-# 推理函数
-def infer_images(model, loader, device, output_dir='./output/', num_examples=None):
+# 推理函数（仅保存原图和预测对比图）
+def infer_images(model, loader, device, output_dir='./predict/'):
     model.eval()
     os.makedirs(output_dir, exist_ok=True)  # 创建输出目录
     with torch.no_grad():
         for i, (images, filenames) in enumerate(loader):
-            if num_examples is not None and i >= num_examples:
-                break
             images = images.to(device)
             outputs = model(images)
             preds = torch.sigmoid(outputs) > 0.5  # 二值化
@@ -171,7 +159,8 @@ def infer_images(model, loader, device, output_dir='./output/', num_examples=Non
                 # 检查预测掩码方向并修正
                 pred_np = pred.cpu().squeeze().numpy()
 
-                # 可视化
+
+                # 可视化（原图 + 预测掩码）
                 plt.figure(figsize=(15, 5))
                 plt.subplot(1, 2, 1)
                 plt.title('Input Image')
@@ -182,17 +171,11 @@ def infer_images(model, loader, device, output_dir='./output/', num_examples=Non
                 plt.imshow(pred_np, cmap='gray')
                 plt.axis('off')
 
-                # 保存可视化图像
-                vis_output_path = os.path.join(output_dir, f'vis_{filename}')
-                plt.savefig(vis_output_path, bbox_inches='tight', dpi=300)
-                print(f"可视化图像已保存至：{vis_output_path}")
+                # 保存对比图
+                output_path = os.path.join(output_dir, f'comparison_{filename}')
+                plt.savefig(output_path, bbox_inches='tight', dpi=300)
+                print(f"对比图像已保存至：{output_path}")
                 plt.close()
-
-                # 保存预测掩码
-                mask_output_path = os.path.join(output_dir, f'pred_mask_{filename}')
-                cv2.imwrite(mask_output_path, pred_np * 255)  # 保存为二值化图像（0或255）
-                print(f"预测掩码已保存至：{mask_output_path}")
-
 
 # 主程序
 if __name__ == '__main__':
@@ -201,8 +184,7 @@ if __name__ == '__main__':
 
     # 加载模型
     model = UNet(n_channels=3, n_classes=1).to(device)
-    epoch = 500  # 与您提供的epoch一致
-    checkpoint_path = f'./checkpoints/checkpoint_epoch_{epoch}.pth'
+    checkpoint_path = './checkpoints/checkpoint_epoch_500.pth'  # 假设使用最后一轮的模型
     if not os.path.exists(checkpoint_path):
         print(f"检查点文件 {checkpoint_path} 不存在！")
         exit()
@@ -211,13 +193,10 @@ if __name__ == '__main__':
     model.load_state_dict(checkpoint['model_state_dict'])
     print(f"已加载模型权重：{checkpoint_path}")
 
-    # 创建推理数据集
-    image_dir = './data/image/'
-    image_dir = '../附件2'
+    # 创建推理数据集和DataLoader
+    image_dir = './data/image/'  # 指定读取的文件夹
     inference_dataset = InferenceDataset(image_dir, transform=transform)
-    inference_loader = DataLoader(inference_dataset, batch_size=1, shuffle=False)  # batch_size=1以确保文件名正确对应
+    inference_loader = DataLoader(inference_dataset, batch_size=2, shuffle=False)  # batch_size可调整
 
-    # 推理并保存结果
-    infer_images(model, inference_loader, device, num_examples=None)  # 设置num_examples=None以处理所有图像
-
-    print("推理完成！")
+    # 推理并保存对比图
+    infer_images(model, inference_loader, device)
