@@ -203,9 +203,10 @@ def validate_epoch(model, loader, criterion, device):
             running_loss += loss.item()
     return running_loss / len(loader)
 
-# 测试函数（包括输出二值化图示例）
-def test_model(model, loader, device, num_examples=3):
+# 测试函数（包括输出二值化图示例并保存）
+def test_model(model, loader, device, num_examples=3, output_dir='./output/'):
     model.eval()
+    os.makedirs(output_dir, exist_ok=True)  # 创建输出目录
     with torch.no_grad():
         for i, (images, masks) in enumerate(loader):
             if i >= num_examples:
@@ -229,13 +230,19 @@ def test_model(model, loader, device, num_examples=3):
             plt.axis('off')
             plt.subplot(1, 3, 2)
             plt.title('Ground Truth Mask')
-            plt.imshow(masks[0].cpu().squeeze(), cmap='gray')  # 去除通道维度
+            plt.imshow(masks[0].cpu().squeeze(), cmap='gray')
             plt.axis('off')
             plt.subplot(1, 3, 3)
             plt.title('Predicted Binary Mask')
             plt.imshow(preds[0].cpu().squeeze(), cmap='gray')
             plt.axis('off')
+
+            # 保存可视化图像
+            output_path = os.path.join(output_dir, f'test_result_{i+1}_{epoch}.png')
+            plt.savefig(output_path, bbox_inches='tight', dpi=300)
+            print(f"可视化图像已保存至：{output_path}")
             plt.show()
+            plt.close()
 
 # 创建保存模型的目录
 os.makedirs('./checkpoints', exist_ok=True)
@@ -265,13 +272,14 @@ if __name__ == '__main__':
     # 设备
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    epoch=500
     # 加载模型
     model = UNet(n_channels=3, n_classes=1).to(device)
-    checkpoint_path = './checkpoints/checkpoint_epoch_10.pth'  # 假设使用最后一轮的模型
+    checkpoint_path = f'./checkpoints/checkpoint_epoch_{epoch}.pth'  # 假设使用最后一轮的模型
 
 
     checkpoint = torch.load(checkpoint_path, map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'])
     print(f"已加载模型权重：{checkpoint_path}")
     # 测试
-    test_model(model, test_loader, device)
+    test_model(model, test_loader, device,epoch)
